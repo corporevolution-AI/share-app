@@ -23,6 +23,7 @@ model Organization {
   shortlink           ShortLinkPreference  @default(ASK)
   autoPost            AutoPost[]
   Comments            Comments[]
+  PostApproval        PostApproval[]
   credits             Credits[]
   clippings           Clipping[]
   customers           Customer[]
@@ -104,6 +105,7 @@ model User {
   agent                 String?
   deletedAt             DateTime?
   comments              Comments[]
+  postApprovals         PostApproval[]
   items                 ItemUser[]
   groupBuyer            MessagesGroup[]      @relation("groupBuyer")
   groupSeller           MessagesGroup[]      @relation("groupSeller")
@@ -454,6 +456,23 @@ model Comments {
   @@index([deletedAt])
 }
 
+model PostApproval {
+  id             String           @id @default(uuid())
+  organizationId String
+  postId         String
+  reviewerId     String
+  decision       ApprovalDecision
+  comment        String?
+  createdAt      DateTime         @default(now())
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  post           Post             @relation(fields: [postId], references: [id])
+  reviewer       User             @relation(fields: [reviewerId], references: [id])
+
+  @@index([organizationId])
+  @@index([postId])
+  @@index([reviewerId])
+}
+
 model Post {
   id                         String                    @id @default(cuid())
   state                      State                     @default(QUEUE)
@@ -492,6 +511,7 @@ model Post {
   submittedForOrder          Orders?                   @relation(fields: [submittedForOrderId], references: [id])
   submittedForOrganization   Organization?             @relation("submittedForOrg", fields: [submittedForOrganizationId], references: [id])
   tags                       TagsPosts[]
+  approvals                  PostApproval[]
 
   @@index([group])
   @@index([batchId])
@@ -1808,6 +1828,11 @@ enum APPROVED_SUBMIT_FOR_ORDER {
   NO
   WAITING_CONFIRMATION
   YES
+}
+
+enum ApprovalDecision {
+  APPROVED
+  REJECTED
 }
 
 enum CreationMethod {
