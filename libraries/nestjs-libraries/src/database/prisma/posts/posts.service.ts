@@ -1208,6 +1208,7 @@ export class PostsService {
       postList.push({
         postId: posts[0].id,
         integration: post.integration.id,
+        pendingApproval: needsApproval,
       });
     }
 
@@ -1720,6 +1721,26 @@ export class PostsService {
 
   getPendingApprovals(orgId: string) {
     return this._postRepository.listPendingApprovals(orgId);
+  }
+
+  // Called from the hourly missing-posts sweep. The sweep runs once an hour,
+  // so the 09:xx UTC run is the one daily reminder. Never throws, so the
+  // publishing sweep is not affected.
+  async remindPendingApprovals() {
+    try {
+      if (dayjs.utc().hour() !== 9) {
+        return;
+      }
+
+      const counts = await this._postRepository.countPendingApprovalsByOrg();
+      for (const { organizationId, count } of counts) {
+        await this._notificationService.inAppNotification(
+          organizationId,
+          'Approbation des publications',
+          `${count} publication(s) attendent une approbation avant d'être programmée(s).`
+        );
+      }
+    } catch (err) {}
   }
 
   // Notifications must never block saving or reviewing a post.

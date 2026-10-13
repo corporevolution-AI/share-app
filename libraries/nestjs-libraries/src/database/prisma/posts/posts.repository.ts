@@ -128,6 +128,22 @@ export class PostsRepository {
     });
   }
 
+  async countPendingApprovalsByOrg() {
+    const rows = await this._post.model.post.groupBy({
+      by: ['organizationId'],
+      where: {
+        pendingApproval: true,
+        deletedAt: null,
+        state: { in: ['QUEUE', 'DRAFT'] },
+      },
+      _count: { _all: true },
+    });
+    return rows.map((row) => ({
+      organizationId: row.organizationId,
+      count: row._count._all,
+    }));
+  }
+
   setPendingApprovalForGroup(
     orgId: string,
     group: string,
