@@ -206,6 +206,17 @@ export class OrganizationService {
     return this._organizationRepository.getShortlinkPreference(orgId);
   }
 
+  getApprovalSetting(orgId: string) {
+    return this._organizationRepository.getApprovalSetting(orgId);
+  }
+
+  updateApprovalSetting(orgId: string, requiresApproval: boolean) {
+    return this._organizationRepository.updateApprovalSetting(
+      orgId,
+      requiresApproval
+    );
+  }
+
   updateShortlinkPreference(orgId: string, shortlink: ShortLinkPreference) {
     return this._organizationRepository.updateShortlinkPreference(
       orgId,
