@@ -8,6 +8,7 @@ import {
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import { CreatePostDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import { PostApprovalDto } from '@gitroom/nestjs-libraries/dtos/posts/post.approval.dto';
+import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import dayjs from 'dayjs';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import {
@@ -76,7 +77,8 @@ export class PostsService {
     private _shortLinkService: ShortLinkService,
     private _openaiService: OpenaiService,
     private _temporalService: TemporalService,
-    private _refreshIntegrationService: RefreshIntegrationService
+    private _refreshIntegrationService: RefreshIntegrationService,
+    private _notificationService: NotificationService
   ) {}
 
   searchForMissingThreeHoursPosts() {
@@ -1111,6 +1113,7 @@ export class PostsService {
   ): Promise<any[]> {
     const postList = [];
     const batchId = uuidv4();
+    let approvalRequested = false;
     for (const post of body.posts) {
       if (
         (body.type === 'schedule' || body.type === 'now') &&
@@ -1175,6 +1178,13 @@ export class PostsService {
           posts.map((p) => p.id),
           true
         );
+        if (!approvalRequested) {
+          approvalRequested = true;
+          await this.notifyOrg(
+            orgId,
+            'Une publication attend une approbation avant d\'être programmée.'
+          );
+        }
       }
 
       if (body.type !== 'update' || needsApproval) {
@@ -1700,6 +1710,17 @@ export class PostsService {
     }
   }
 
+  // Notifications must never block saving or reviewing a post.
+  private async notifyOrg(orgId: string, message: string) {
+    try {
+      await this._notificationService.inAppNotification(
+        orgId,
+        'Approbation des publications',
+        message
+      );
+    } catch (err) {}
+  }
+
   async approvePost(
     orgId: string,
     userId: string,
@@ -1726,6 +1747,14 @@ export class PostsService {
       userId,
       body.decision,
       body.comment?.trim() || undefined
+    );
+
+    await this.notifyOrg(
+      orgId,
+      body.decision === 'APPROVED'
+        ? 'Une publication a été approuvée et sera publiée.'
+        : 'Une publication a été refusée et reste en attente.' +
+            (body.comment?.trim() ? ` Motif : ${body.comment.trim()}` : '')
     );
 
     if (body.decision === 'APPROVED') {
