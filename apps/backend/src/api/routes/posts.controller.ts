@@ -24,6 +24,7 @@ import { Response } from 'express';
 import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
 import { ShortLinkService } from '@gitroom/nestjs-libraries/short-linking/short.link.service';
 import { CreateTagDto } from '@gitroom/nestjs-libraries/dtos/posts/create.tag.dto';
+import { PostApprovalDto } from '@gitroom/nestjs-libraries/dtos/posts/post.approval.dto';
 import {
   AuthorizationActions,
   Sections,
@@ -90,6 +91,16 @@ export class PostsController {
     @RealIP() ip: string
   ) {
     return this._postsService.createPublicComment(id, body, user.id, ip);
+  }
+
+  @Post('/:id/approval')
+  async approvePost(
+    @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User,
+    @Param('id') id: string,
+    @Body() body: PostApprovalDto
+  ) {
+    return this._postsService.approvePost(org.id, user.id, id, body);
   }
 
   @Put('/comments/:commentId/resolve')

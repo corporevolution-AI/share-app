@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { Post as PostBody } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import {
   APPROVED_SUBMIT_FOR_ORDER,
+  ApprovalDecision,
   CreationMethod,
   Post,
   State,
@@ -30,8 +31,60 @@ export class PostsRepository {
     private _comments: PrismaRepository<'comments'>,
     private _tags: PrismaRepository<'tags'>,
     private _tagsPosts: PrismaRepository<'tagsPosts'>,
-    private _errors: PrismaRepository<'errors'>
+    private _errors: PrismaRepository<'errors'>,
+    private _postApprovals: PrismaRepository<'postApproval'>,
+    private _userOrganization: PrismaRepository<'userOrganization'>
   ) {}
+
+  getMemberRole(orgId: string, userId: string) {
+    return this._userOrganization.model.userOrganization.findFirst({
+      where: {
+        organizationId: orgId,
+        userId,
+        disabled: false,
+      },
+      select: {
+        role: true,
+      },
+    });
+  }
+
+  findActivePostInOrg(orgId: string, postId: string) {
+    return this._post.model.post.findFirst({
+      where: {
+        id: postId,
+        organizationId: orgId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+      },
+    });
+  }
+
+  createApproval(
+    orgId: string,
+    postId: string,
+    reviewerId: string,
+    decision: ApprovalDecision,
+    comment?: string
+  ) {
+    return this._postApprovals.model.postApproval.create({
+      data: {
+        organizationId: orgId,
+        postId,
+        reviewerId,
+        decision,
+        comment,
+      },
+      select: {
+        id: true,
+        decision: true,
+        comment: true,
+        createdAt: true,
+      },
+    });
+  }
 
   searchForMissingThreeHoursPosts() {
     return this._post.model.post.findMany({

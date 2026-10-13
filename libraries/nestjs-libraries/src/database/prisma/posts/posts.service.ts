@@ -1,11 +1,13 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   ValidationPipe,
 } from '@nestjs/common';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import { CreatePostDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
+import { PostApprovalDto } from '@gitroom/nestjs-libraries/dtos/posts/post.approval.dto';
 import dayjs from 'dayjs';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import {
@@ -1679,6 +1681,31 @@ export class PostsService {
     if (!result?.success) {
       throw new BadRequestException('Captcha verification failed');
     }
+  }
+
+  async approvePost(
+    orgId: string,
+    userId: string,
+    postId: string,
+    body: PostApprovalDto
+  ) {
+    const member = await this._postRepository.getMemberRole(orgId, userId);
+    if (!member || !['ADMIN', 'SUPERADMIN'].includes(member.role)) {
+      throw new ForbiddenException('Only admins can review posts');
+    }
+
+    const post = await this._postRepository.findActivePostInOrg(orgId, postId);
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    return this._postRepository.createApproval(
+      orgId,
+      postId,
+      userId,
+      body.decision,
+      body.comment?.trim() || undefined
+    );
   }
 
   async resolveComment(orgId: string, commentId: string, resolved: boolean) {
