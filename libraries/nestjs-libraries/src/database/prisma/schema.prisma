@@ -107,6 +107,7 @@ model User {
   deletedAt             DateTime?
   comments              Comments[]
   postApprovals         PostApproval[]
+  createdPosts          Post[]                @relation("PostCreatedBy")
   items                 ItemUser[]
   groupBuyer            MessagesGroup[]      @relation("groupBuyer")
   groupSeller           MessagesGroup[]      @relation("groupSeller")
@@ -514,6 +515,10 @@ model Post {
   tags                       TagsPosts[]
   approvals                  PostApproval[]
   pendingApproval            Boolean                   @default(false)
+  createdById                String?
+  createdBy                  User?                     @relation("PostCreatedBy", fields: [createdById], references: [id])
+
+  @@index([createdById])
 
   @@index([group])
   @@index([batchId])

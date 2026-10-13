@@ -216,6 +216,7 @@ export class PostsController {
   @CheckPolicies([AuthorizationActions.Create, Sections.POSTS_PER_MONTH])
   async createPost(
     @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User,
     @Body() rawBody: any
   ) {
     // Server-side validation — never trust the client to have validated.
@@ -256,7 +257,13 @@ export class PostsController {
     }
 
     const body = await this._postsService.mapTypeToPost(rawBody, org.id);
-    return this._postsService.createPost(org.id, body, 'WEB');
+    return this._postsService.createPost(
+      org.id,
+      body,
+      'WEB',
+      false,
+      user.id
+    );
   }
 
   @Post('/generator/draft')

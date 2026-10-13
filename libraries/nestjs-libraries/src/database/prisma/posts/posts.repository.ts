@@ -62,6 +62,12 @@ export class PostsRepository {
         group: true,
         state: true,
         pendingApproval: true,
+        createdById: true,
+        createdBy: {
+          select: {
+            email: true,
+          },
+        },
         integration: {
           select: {
             providerIdentifier: true,
@@ -83,6 +89,13 @@ export class PostsRepository {
     return this._post.model.post.updateMany({
       where: { id: { in: postIds } },
       data: { pendingApproval },
+    });
+  }
+
+  setCreatorIfMissing(postIds: string[], createdById: string) {
+    return this._post.model.post.updateMany({
+      where: { id: { in: postIds }, createdById: null },
+      data: { createdById },
     });
   }
 

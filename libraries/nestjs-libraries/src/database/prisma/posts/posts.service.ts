@@ -1109,7 +1109,8 @@ export class PostsService {
     orgId: string,
     body: CreatePostDto,
     creationMethod: CreationMethod,
-    keepGroup = false
+    keepGroup = false,
+    createdById?: string
   ): Promise<any[]> {
     const postList = [];
     const batchId = uuidv4();
@@ -1173,6 +1174,13 @@ export class PostsService {
       const needsApproval =
         posts[0].state === 'QUEUE' &&
         (await this._postRepository.organizationRequiresApproval(orgId));
+      if (createdById) {
+        await this._postRepository.setCreatorIfMissing(
+          posts.map((p) => p.id),
+          createdById
+        );
+      }
+
       if (needsApproval) {
         await this._postRepository.setPendingApproval(
           posts.map((p) => p.id),
@@ -1721,6 +1729,31 @@ export class PostsService {
     } catch (err) {}
   }
 
+  // Tells the author of the post, by email, how their post was reviewed.
+  private async notifyAuthor(
+    email: string,
+    decision: 'APPROVED' | 'REJECTED',
+    comment?: string
+  ) {
+    try {
+      if (!this._notificationService.hasEmailProvider()) {
+        return;
+      }
+      const escape = (text: string) =>
+        text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const outcome =
+        decision === 'APPROVED'
+          ? 'Votre publication a été approuvée et sera publiée.'
+          : 'Votre publication a été refusée.' +
+            (comment ? ` Motif : ${escape(comment)}` : '');
+      await this._notificationService.sendEmail(
+        email,
+        'Votre publication a été relue',
+        `<p>${outcome}</p>`
+      );
+    } catch (err) {}
+  }
+
   async approvePost(
     orgId: string,
     userId: string,
@@ -1737,6 +1770,10 @@ export class PostsService {
       throw new NotFoundException('Post not found');
     }
 
+    if (post.createdById === userId) {
+      throw new ForbiddenException('You cannot review your own post');
+    }
+
     if (!post.pendingApproval || !['QUEUE', 'DRAFT'].includes(post.state)) {
       throw new BadRequestException('Post is not waiting for approval');
     }
@@ -1748,6 +1785,14 @@ export class PostsService {
       body.decision,
       body.comment?.trim() || undefined
     );
+
+    if (post.createdBy?.email) {
+      await this.notifyAuthor(
+        post.createdBy.email,
+        body.decision,
+        body.comment?.trim()
+      );
+    }
 
     await this.notifyOrg(
       orgId,
