@@ -99,6 +99,35 @@ export class PostsRepository {
     });
   }
 
+  listPendingApprovals(orgId: string) {
+    return this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        pendingApproval: true,
+        deletedAt: null,
+        state: { in: ['QUEUE', 'DRAFT'] },
+      },
+      orderBy: { publishDate: 'asc' },
+      take: 50,
+      select: {
+        id: true,
+        content: true,
+        publishDate: true,
+        state: true,
+        createdAt: true,
+        createdById: true,
+        integration: {
+          select: {
+            id: true,
+            name: true,
+            picture: true,
+            providerIdentifier: true,
+          },
+        },
+      },
+    });
+  }
+
   setPendingApprovalForGroup(
     orgId: string,
     group: string,

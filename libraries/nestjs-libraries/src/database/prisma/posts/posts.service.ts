@@ -1718,6 +1718,10 @@ export class PostsService {
     }
   }
 
+  getPendingApprovals(orgId: string) {
+    return this._postRepository.listPendingApprovals(orgId);
+  }
+
   // Notifications must never block saving or reviewing a post.
   private async notifyOrg(orgId: string, message: string) {
     try {

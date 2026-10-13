@@ -93,6 +93,11 @@ export class PostsController {
     return this._postsService.createPublicComment(id, body, user.id, ip);
   }
 
+  @Get('/approvals/pending')
+  async getPendingApprovals(@GetOrgFromRequest() org: Organization) {
+    return this._postsService.getPendingApprovals(org.id);
+  }
+
   @Post('/:id/approval')
   async approvePost(
     @GetOrgFromRequest() org: Organization,
