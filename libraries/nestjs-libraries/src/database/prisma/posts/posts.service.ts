@@ -919,6 +919,11 @@ export class PostsService {
       return;
     }
 
+    // A post waiting for approval is not scheduled until approvePost clears it.
+    if (await this._postRepository.isPendingApproval(postId)) {
+      return;
+    }
+
     try {
       await this._temporalService.client
         .getRawClient()
@@ -1160,12 +1165,24 @@ export class PostsService {
         posts.filter((p) => existingIds.includes(p.id))
       );
 
-      if (body.type !== 'update') {
+      // In organizations that require approval, a scheduled post waits for a
+      // reviewer. Saving it again (even an edit) requires a new approval.
+      const needsApproval =
+        posts[0].state === 'QUEUE' &&
+        (await this._postRepository.organizationRequiresApproval(orgId));
+      if (needsApproval) {
+        await this._postRepository.setPendingApproval(
+          posts.map((p) => p.id),
+          true
+        );
+      }
+
+      if (body.type !== 'update' || needsApproval) {
         this.startWorkflow(
           post.settings.__type.split('-')[0].toLowerCase(),
           posts[0].id,
           orgId,
-          posts[0].state
+          needsApproval ? 'DRAFT' : posts[0].state
         ).catch((err) => {});
       }
 
@@ -1699,13 +1716,36 @@ export class PostsService {
       throw new NotFoundException('Post not found');
     }
 
-    return this._postRepository.createApproval(
+    if (!post.pendingApproval || !['QUEUE', 'DRAFT'].includes(post.state)) {
+      throw new BadRequestException('Post is not waiting for approval');
+    }
+
+    const approval = await this._postRepository.createApproval(
       orgId,
       postId,
       userId,
       body.decision,
       body.comment?.trim() || undefined
     );
+
+    if (body.decision === 'APPROVED') {
+      await this._postRepository.setPendingApprovalForGroup(
+        orgId,
+        post.group,
+        false
+      );
+
+      if (post.state === 'QUEUE') {
+        await this.startWorkflow(
+          post.integration.providerIdentifier.split('-')[0].toLowerCase(),
+          postId,
+          orgId,
+          'QUEUE'
+        );
+      }
+    }
+
+    return approval;
   }
 
   async resolveComment(orgId: string, commentId: string, resolved: boolean) {

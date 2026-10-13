@@ -22,6 +22,7 @@ model Organization {
   isTrailing          Boolean              @default(false)
   shortlink           ShortLinkPreference  @default(ASK)
   autoPost            AutoPost[]
+  requiresApproval    Boolean              @default(false)
   Comments            Comments[]
   PostApproval        PostApproval[]
   credits             Credits[]
@@ -512,6 +513,7 @@ model Post {
   submittedForOrganization   Organization?             @relation("submittedForOrg", fields: [submittedForOrganizationId], references: [id])
   tags                       TagsPosts[]
   approvals                  PostApproval[]
+  pendingApproval            Boolean                   @default(false)
 
   @@index([group])
   @@index([batchId])

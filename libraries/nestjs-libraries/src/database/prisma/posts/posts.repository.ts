@@ -33,7 +33,8 @@ export class PostsRepository {
     private _tagsPosts: PrismaRepository<'tagsPosts'>,
     private _errors: PrismaRepository<'errors'>,
     private _postApprovals: PrismaRepository<'postApproval'>,
-    private _userOrganization: PrismaRepository<'userOrganization'>
+    private _userOrganization: PrismaRepository<'userOrganization'>,
+    private _organization: PrismaRepository<'organization'>
   ) {}
 
   getMemberRole(orgId: string, userId: string) {
@@ -58,8 +59,50 @@ export class PostsRepository {
       },
       select: {
         id: true,
+        group: true,
+        state: true,
+        pendingApproval: true,
+        integration: {
+          select: {
+            providerIdentifier: true,
+          },
+        },
       },
     });
+  }
+
+  async organizationRequiresApproval(orgId: string) {
+    const org = await this._organization.model.organization.findUnique({
+      where: { id: orgId },
+      select: { requiresApproval: true },
+    });
+    return !!org?.requiresApproval;
+  }
+
+  setPendingApproval(postIds: string[], pendingApproval: boolean) {
+    return this._post.model.post.updateMany({
+      where: { id: { in: postIds } },
+      data: { pendingApproval },
+    });
+  }
+
+  setPendingApprovalForGroup(
+    orgId: string,
+    group: string,
+    pendingApproval: boolean
+  ) {
+    return this._post.model.post.updateMany({
+      where: { organizationId: orgId, group },
+      data: { pendingApproval },
+    });
+  }
+
+  async isPendingApproval(postId: string) {
+    const post = await this._post.model.post.findFirst({
+      where: { id: postId },
+      select: { pendingApproval: true },
+    });
+    return !!post?.pendingApproval;
   }
 
   createApproval(
@@ -102,6 +145,7 @@ export class PostsRepository {
         state: 'QUEUE',
         deletedAt: null,
         parentPostId: null,
+        pendingApproval: false,
       },
       select: {
         id: true,
