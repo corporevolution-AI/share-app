@@ -648,6 +648,31 @@ export class OrganizationRepository {
     });
   }
 
+  getApprovalSetting(orgId: string) {
+    return this._organization.model.organization.findUnique({
+      where: {
+        id: orgId,
+      },
+      select: {
+        requiresApproval: true,
+      },
+    });
+  }
+
+  updateApprovalSetting(orgId: string, requiresApproval: boolean) {
+    return this._organization.model.organization.update({
+      where: {
+        id: orgId,
+      },
+      data: {
+        requiresApproval,
+      },
+      select: {
+        requiresApproval: true,
+      },
+    });
+  }
+
   updateShortlinkPreference(orgId: string, shortlink: ShortLinkPreference) {
     return this._organization.model.organization.update({
       where: {

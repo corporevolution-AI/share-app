@@ -6,6 +6,8 @@ import dynamic from 'next/dynamic';
 import AuthenticationComponent from '@gitroom/frontend/components/settings/authentication.component';
 import EmailNotificationsComponent from '@gitroom/frontend/components/settings/email-notifications.component';
 import ShortlinkPreferenceComponent from '@gitroom/frontend/components/settings/shortlink-preference.component';
+import ApprovalSettingComponent from '@gitroom/frontend/components/settings/approval-setting.component';
+import PendingApprovalsComponent from '@gitroom/frontend/components/settings/pending-approvals.component';
 import DeleteAccountComponent from '@gitroom/frontend/components/settings/delete-account.component';
 
 const MetricComponent = dynamic(
@@ -24,6 +26,8 @@ export const GlobalSettings = () => {
       <MetricComponent />
       <EmailNotificationsComponent />
       <ShortlinkPreferenceComponent />
+      <ApprovalSettingComponent />
+      <PendingApprovalsComponent />
       <DeleteAccountComponent />
     </div>
   );

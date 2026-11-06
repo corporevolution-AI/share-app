@@ -113,6 +113,7 @@ export class PostActivity {
 
   @ActivityMethod()
   async searchForMissingThreeHoursPosts() {
+    await this._postService.remindPendingApprovals();
     const list = await this._postService.searchForMissingThreeHoursPosts();
     for (const post of list) {
       await this._temporalService.client

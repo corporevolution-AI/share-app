@@ -1,11 +1,14 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   ValidationPipe,
 } from '@nestjs/common';
 import { PostsRepository } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.repository';
 import { CreatePostDto } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
+import { PostApprovalDto } from '@gitroom/nestjs-libraries/dtos/posts/post.approval.dto';
+import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import dayjs from 'dayjs';
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import {
@@ -74,7 +77,8 @@ export class PostsService {
     private _shortLinkService: ShortLinkService,
     private _openaiService: OpenaiService,
     private _temporalService: TemporalService,
-    private _refreshIntegrationService: RefreshIntegrationService
+    private _refreshIntegrationService: RefreshIntegrationService,
+    private _notificationService: NotificationService
   ) {}
 
   searchForMissingThreeHoursPosts() {
@@ -917,6 +921,11 @@ export class PostsService {
       return;
     }
 
+    // A post waiting for approval is not scheduled until approvePost clears it.
+    if (await this._postRepository.isPendingApproval(postId)) {
+      return;
+    }
+
     try {
       await this._temporalService.client
         .getRawClient()
@@ -1100,10 +1109,12 @@ export class PostsService {
     orgId: string,
     body: CreatePostDto,
     creationMethod: CreationMethod,
-    keepGroup = false
+    keepGroup = false,
+    createdById?: string
   ): Promise<any[]> {
     const postList = [];
     const batchId = uuidv4();
+    let approvalRequested = false;
     for (const post of body.posts) {
       if (
         (body.type === 'schedule' || body.type === 'now') &&
@@ -1158,12 +1169,38 @@ export class PostsService {
         posts.filter((p) => existingIds.includes(p.id))
       );
 
-      if (body.type !== 'update') {
+      // In organizations that require approval, a scheduled post waits for a
+      // reviewer. Saving it again (even an edit) requires a new approval.
+      const needsApproval =
+        posts[0].state === 'QUEUE' &&
+        (await this._postRepository.organizationRequiresApproval(orgId));
+      if (createdById) {
+        await this._postRepository.setCreatorIfMissing(
+          posts.map((p) => p.id),
+          createdById
+        );
+      }
+
+      if (needsApproval) {
+        await this._postRepository.setPendingApproval(
+          posts.map((p) => p.id),
+          true
+        );
+        if (!approvalRequested) {
+          approvalRequested = true;
+          await this.notifyOrg(
+            orgId,
+            'Une publication attend une approbation avant d\'être programmée.'
+          );
+        }
+      }
+
+      if (body.type !== 'update' || needsApproval) {
         this.startWorkflow(
           post.settings.__type.split('-')[0].toLowerCase(),
           posts[0].id,
           orgId,
-          posts[0].state
+          needsApproval ? 'DRAFT' : posts[0].state
         ).catch((err) => {});
       }
 
@@ -1171,6 +1208,7 @@ export class PostsService {
       postList.push({
         postId: posts[0].id,
         integration: post.integration.id,
+        pendingApproval: needsApproval,
       });
     }
 
@@ -1679,6 +1717,134 @@ export class PostsService {
     if (!result?.success) {
       throw new BadRequestException('Captcha verification failed');
     }
+  }
+
+  getPendingApprovals(orgId: string) {
+    return this._postRepository.listPendingApprovals(orgId);
+  }
+
+  // Called from the hourly missing-posts sweep. The sweep runs once an hour,
+  // so the 09:xx UTC run is the one daily reminder. Never throws, so the
+  // publishing sweep is not affected.
+  async remindPendingApprovals() {
+    try {
+      if (dayjs.utc().hour() !== 9) {
+        return;
+      }
+
+      const counts = await this._postRepository.countPendingApprovalsByOrg();
+      for (const { organizationId, count } of counts) {
+        await this._notificationService.inAppNotification(
+          organizationId,
+          'Approbation des publications',
+          `${count} publication(s) attendent une approbation avant d'être programmée(s).`
+        );
+      }
+    } catch (err) {}
+  }
+
+  // Notifications must never block saving or reviewing a post.
+  private async notifyOrg(orgId: string, message: string) {
+    try {
+      await this._notificationService.inAppNotification(
+        orgId,
+        'Approbation des publications',
+        message
+      );
+    } catch (err) {}
+  }
+
+  // Tells the author of the post, by email, how their post was reviewed.
+  private async notifyAuthor(
+    email: string,
+    decision: 'APPROVED' | 'REJECTED',
+    comment?: string
+  ) {
+    try {
+      if (!this._notificationService.hasEmailProvider()) {
+        return;
+      }
+      const escape = (text: string) =>
+        text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const outcome =
+        decision === 'APPROVED'
+          ? 'Votre publication a été approuvée et sera publiée.'
+          : 'Votre publication a été refusée.' +
+            (comment ? ` Motif : ${escape(comment)}` : '');
+      await this._notificationService.sendEmail(
+        email,
+        'Votre publication a été relue',
+        `<p>${outcome}</p>`
+      );
+    } catch (err) {}
+  }
+
+  async approvePost(
+    orgId: string,
+    userId: string,
+    postId: string,
+    body: PostApprovalDto
+  ) {
+    const member = await this._postRepository.getMemberRole(orgId, userId);
+    if (!member || !['ADMIN', 'SUPERADMIN'].includes(member.role)) {
+      throw new ForbiddenException('Only admins can review posts');
+    }
+
+    const post = await this._postRepository.findActivePostInOrg(orgId, postId);
+    if (!post) {
+      throw new NotFoundException('Post not found');
+    }
+
+    if (post.createdById === userId) {
+      throw new ForbiddenException('You cannot review your own post');
+    }
+
+    if (!post.pendingApproval || !['QUEUE', 'DRAFT'].includes(post.state)) {
+      throw new BadRequestException('Post is not waiting for approval');
+    }
+
+    const approval = await this._postRepository.createApproval(
+      orgId,
+      postId,
+      userId,
+      body.decision,
+      body.comment?.trim() || undefined
+    );
+
+    if (post.createdBy?.email) {
+      await this.notifyAuthor(
+        post.createdBy.email,
+        body.decision,
+        body.comment?.trim()
+      );
+    }
+
+    await this.notifyOrg(
+      orgId,
+      body.decision === 'APPROVED'
+        ? 'Une publication a été approuvée et sera publiée.'
+        : 'Une publication a été refusée et reste en attente.' +
+            (body.comment?.trim() ? ` Motif : ${body.comment.trim()}` : '')
+    );
+
+    if (body.decision === 'APPROVED') {
+      await this._postRepository.setPendingApprovalForGroup(
+        orgId,
+        post.group,
+        false
+      );
+
+      if (post.state === 'QUEUE') {
+        await this.startWorkflow(
+          post.integration.providerIdentifier.split('-')[0].toLowerCase(),
+          postId,
+          orgId,
+          'QUEUE'
+        );
+      }
+    }
+
+    return approval;
   }
 
   async resolveComment(orgId: string, commentId: string, resolved: boolean) {

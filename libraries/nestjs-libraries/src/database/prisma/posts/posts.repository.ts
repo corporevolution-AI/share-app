@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { Post as PostBody } from '@gitroom/nestjs-libraries/dtos/posts/create.post.dto';
 import {
   APPROVED_SUBMIT_FOR_ORDER,
+  ApprovalDecision,
   CreationMethod,
   Post,
   State,
@@ -30,8 +31,161 @@ export class PostsRepository {
     private _comments: PrismaRepository<'comments'>,
     private _tags: PrismaRepository<'tags'>,
     private _tagsPosts: PrismaRepository<'tagsPosts'>,
-    private _errors: PrismaRepository<'errors'>
+    private _errors: PrismaRepository<'errors'>,
+    private _postApprovals: PrismaRepository<'postApproval'>,
+    private _userOrganization: PrismaRepository<'userOrganization'>,
+    private _organization: PrismaRepository<'organization'>
   ) {}
+
+  getMemberRole(orgId: string, userId: string) {
+    return this._userOrganization.model.userOrganization.findFirst({
+      where: {
+        organizationId: orgId,
+        userId,
+        disabled: false,
+      },
+      select: {
+        role: true,
+      },
+    });
+  }
+
+  findActivePostInOrg(orgId: string, postId: string) {
+    return this._post.model.post.findFirst({
+      where: {
+        id: postId,
+        organizationId: orgId,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        group: true,
+        state: true,
+        pendingApproval: true,
+        createdById: true,
+        createdBy: {
+          select: {
+            email: true,
+          },
+        },
+        integration: {
+          select: {
+            providerIdentifier: true,
+          },
+        },
+      },
+    });
+  }
+
+  async organizationRequiresApproval(orgId: string) {
+    const org = await this._organization.model.organization.findUnique({
+      where: { id: orgId },
+      select: { requiresApproval: true },
+    });
+    return !!org?.requiresApproval;
+  }
+
+  setPendingApproval(postIds: string[], pendingApproval: boolean) {
+    return this._post.model.post.updateMany({
+      where: { id: { in: postIds } },
+      data: { pendingApproval },
+    });
+  }
+
+  setCreatorIfMissing(postIds: string[], createdById: string) {
+    return this._post.model.post.updateMany({
+      where: { id: { in: postIds }, createdById: null },
+      data: { createdById },
+    });
+  }
+
+  listPendingApprovals(orgId: string) {
+    return this._post.model.post.findMany({
+      where: {
+        organizationId: orgId,
+        pendingApproval: true,
+        deletedAt: null,
+        state: { in: ['QUEUE', 'DRAFT'] },
+      },
+      orderBy: { publishDate: 'asc' },
+      take: 50,
+      select: {
+        id: true,
+        content: true,
+        publishDate: true,
+        state: true,
+        createdAt: true,
+        createdById: true,
+        integration: {
+          select: {
+            id: true,
+            name: true,
+            picture: true,
+            providerIdentifier: true,
+          },
+        },
+      },
+    });
+  }
+
+  async countPendingApprovalsByOrg() {
+    const rows = await this._post.model.post.groupBy({
+      by: ['organizationId'],
+      where: {
+        pendingApproval: true,
+        deletedAt: null,
+        state: { in: ['QUEUE', 'DRAFT'] },
+      },
+      _count: { _all: true },
+    });
+    return rows.map((row) => ({
+      organizationId: row.organizationId,
+      count: row._count._all,
+    }));
+  }
+
+  setPendingApprovalForGroup(
+    orgId: string,
+    group: string,
+    pendingApproval: boolean
+  ) {
+    return this._post.model.post.updateMany({
+      where: { organizationId: orgId, group },
+      data: { pendingApproval },
+    });
+  }
+
+  async isPendingApproval(postId: string) {
+    const post = await this._post.model.post.findFirst({
+      where: { id: postId },
+      select: { pendingApproval: true },
+    });
+    return !!post?.pendingApproval;
+  }
+
+  createApproval(
+    orgId: string,
+    postId: string,
+    reviewerId: string,
+    decision: ApprovalDecision,
+    comment?: string
+  ) {
+    return this._postApprovals.model.postApproval.create({
+      data: {
+        organizationId: orgId,
+        postId,
+        reviewerId,
+        decision,
+        comment,
+      },
+      select: {
+        id: true,
+        decision: true,
+        comment: true,
+        createdAt: true,
+      },
+    });
+  }
 
   searchForMissingThreeHoursPosts() {
     return this._post.model.post.findMany({
@@ -49,6 +203,7 @@ export class PostsRepository {
         state: 'QUEUE',
         deletedAt: null,
         parentPostId: null,
+        pendingApproval: false,
       },
       select: {
         id: true,

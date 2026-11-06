@@ -24,6 +24,7 @@ import { Response } from 'express';
 import { GetUserFromRequest } from '@gitroom/nestjs-libraries/user/user.from.request';
 import { ShortLinkService } from '@gitroom/nestjs-libraries/short-linking/short.link.service';
 import { CreateTagDto } from '@gitroom/nestjs-libraries/dtos/posts/create.tag.dto';
+import { PostApprovalDto } from '@gitroom/nestjs-libraries/dtos/posts/post.approval.dto';
 import {
   AuthorizationActions,
   Sections,
@@ -90,6 +91,21 @@ export class PostsController {
     @RealIP() ip: string
   ) {
     return this._postsService.createPublicComment(id, body, user.id, ip);
+  }
+
+  @Get('/approvals/pending')
+  async getPendingApprovals(@GetOrgFromRequest() org: Organization) {
+    return this._postsService.getPendingApprovals(org.id);
+  }
+
+  @Post('/:id/approval')
+  async approvePost(
+    @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User,
+    @Param('id') id: string,
+    @Body() body: PostApprovalDto
+  ) {
+    return this._postsService.approvePost(org.id, user.id, id, body);
   }
 
   @Put('/comments/:commentId/resolve')
@@ -205,6 +221,7 @@ export class PostsController {
   @CheckPolicies([AuthorizationActions.Create, Sections.POSTS_PER_MONTH])
   async createPost(
     @GetOrgFromRequest() org: Organization,
+    @GetUserFromRequest() user: User,
     @Body() rawBody: any
   ) {
     // Server-side validation — never trust the client to have validated.
@@ -245,7 +262,13 @@ export class PostsController {
     }
 
     const body = await this._postsService.mapTypeToPost(rawBody, org.id);
-    return this._postsService.createPost(org.id, body, 'WEB');
+    return this._postsService.createPost(
+      org.id,
+      body,
+      'WEB',
+      false,
+      user.id
+    );
   }
 
   @Post('/generator/draft')
