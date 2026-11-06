@@ -387,7 +387,7 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
           <div className="text-[13px] text-customColor18 mt-[2px]">
             {t(
               'api_onboarding_description',
-              'Use the Postiz API from your own code, n8n or any other automation'
+              'Use the Share app API from your own code, n8n or any other automation'
             )}
           </div>
         </div>
@@ -441,12 +441,12 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
           {isSelfHosted
             ? t(
                 'connector_self_hosted_description',
-                'The official connector works with self-hosted Postiz too. When asked to sign in, choose "Use self-hosted" and enter {{url}} with your API key.',
+                'The official connector works with self-hosted Share app too. When asked to sign in, choose "Use self-hosted" and enter {{url}} with your API key.',
                 { url: mcpBase, interpolation: { escapeValue: false } }
               )
             : t(
                 'connector_onboarding_description',
-                'The fastest way: add Postiz with one click, you will be asked to sign in'
+                'The fastest way: add Share app with one click, you will be asked to sign in'
               )}
         </div>
       </div>
@@ -468,7 +468,7 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
         <div className="text-[13px] text-customColor18 mt-[2px]">
           {t(
             'mcp_onboarding_description',
-            'Give your agent Postiz tools to create, schedule and manage posts'
+            'Give your agent Share app tools to create, schedule and manage posts'
           )}
         </div>
       </div>
@@ -491,7 +491,7 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
                 onClick={() => setAuth(m)}
               >
                 {m === 'oauth'
-                  ? t('sign_in_no_api_key', 'Sign in with Postiz (no API key)')
+                  ? t('sign_in_no_api_key', 'Sign in with Share app (no API key)')
                   : t('api_key', 'API Key')}
               </button>
             ))}
@@ -503,7 +503,7 @@ const OnboardingStep2: FC<{ onBack: () => void; onNext: () => void }> = ({
             {auth === 'oauth' &&
               ` ${t(
                 'oauth_sign_in_hint',
-                'Your agent will open a browser window to sign in to Postiz.'
+                'Your agent will open a browser window to sign in to Share app.'
               )}`}
           </div>
           <pre className="bg-newBgColorInner border border-newBorder rounded-[8px] p-[12px] text-[12px] whitespace-pre-wrap break-all overflow-x-auto leading-[1.5]">
@@ -704,7 +704,7 @@ const OnboardingStep3: FC<{ onBack: () => void; onFinish: () => void }> = ({
         <div className="text-[14px] text-customColor18">
           {t(
             'watch_tutorial_description',
-            'Watch this short video to learn how to get the most out of Postiz'
+            'Watch this short video to learn how to get the most out of Share app'
           )}
         </div>
       </div>
